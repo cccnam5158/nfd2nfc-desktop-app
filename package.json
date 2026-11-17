@@ -1,0 +1,27 @@
+{
+  "name": "nfd2nfc-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "app:build:universal": "tauri build --target universal-apple-darwin",
+    "app:build:intel": "tauri build --target x86_64-apple-darwin",
+    "app:build:arm": "tauri build --target aarch64-apple-darwin",
+    "icons": "tauri icon app-icon.svg"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/plugin-autostart": "^2.3.0",
+    "@tauri-apps/plugin-dialog": "^2.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

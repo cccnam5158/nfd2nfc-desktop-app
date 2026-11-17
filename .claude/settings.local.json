@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tail -5 /private/tmp/claude-501/-Volumes-mac-data-dev-joseph-nfd2nfc-desktop-app/f87056f2-a0cc-4cec-9072-115dcf77c62c/tasks/b3tmzpvfo.output; ls /usr/local/opt/rustup/bin 2>/dev/null | head)",
+      "Read(//usr/local/opt/rustup/**)",
+      "Bash(node_modules/.bin/tauri --version)",
+      "Bash(awk '{print $NF}')",
+      "Bash(xargs -n1 basename)",
+      "Read(//Users/joseph.nam/.cargo/bin/**)",
+      "Bash(~/.cargo/bin/rustc --version)",
+      "Bash(~/.cargo/bin/cargo --version)",
+      "Bash(~/.cargo/bin/rustup target *)",
+      "Bash(awk '{print $2, $11, $12, $13, $14}')",
+      "Read(//Users/joseph.nam/.rustup/toolchains/**)",
+      "Read(//Users/joseph.nam/.rustup/tmp/**)",
+      "Read(//Users/joseph.nam/.rustup/**)",
+      "Bash(ps -o pid,etime,%cpu,stat,command -p 92622)"
+    ]
+  }
+}

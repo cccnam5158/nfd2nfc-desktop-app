@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NFD2NFC</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" data-tauri-drag-region>
+        <div class="traffic-space" data-tauri-drag-region></div>
+        <div class="brand" data-tauri-drag-region>
+          <span class="brand-mark">가</span>
+          <span class="brand-name">NFD2NFC</span>
+        </div>
+        <nav class="nav" id="nav">
+          <button data-tab="home"><span class="nav-ico">⌂</span>홈<kbd>⌘1</kbd></button>
+          <button data-tab="config"><span class="nav-ico">◉</span>감시 폴더<kbd>⌘2</kbd></button>
+          <button data-tab="convert"><span class="nav-ico">⇄</span>변환 · 압축<kbd>⌘3</kbd></button>
+          <button data-tab="browser"><span class="nav-ico">▤</span>탐색기<kbd>⌘4</kbd></button>
+          <button data-tab="logs"><span class="nav-ico">≡</span>로그<kbd>⌘5</kbd></button>
+        </nav>
+        <div class="sidebar-status" id="sidebar-status">
+          <span class="dot"></span><span class="label">확인 중…</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar" data-tauri-drag-region>
+          <h1 id="page-title" data-tauri-drag-region></h1>
+          <div class="topbar-actions" id="page-actions"></div>
+        </header>
+        <section class="page" id="page-home" hidden></section>
+        <section class="page" id="page-config" hidden></section>
+        <section class="page" id="page-convert" hidden></section>
+        <section class="page" id="page-browser" hidden></section>
+        <section class="page" id="page-logs" hidden></section>
+      </main>
+    </div>
+
+    <div class="drop-overlay" id="drop-overlay" hidden>
+      <div class="drop-overlay-card">
+        <div class="drop-overlay-icon">⇣</div>
+        <div class="drop-overlay-text" id="drop-overlay-text">놓으면 변환 목록에 추가합니다</div>
+      </div>
+    </div>
+    <div class="toasts" id="toasts"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

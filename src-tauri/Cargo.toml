@@ -1,0 +1,27 @@
+[package]
+name = "nfd2nfc-desktop"
+description = "macOS 한글 파일명 자소 분리(NFD) 문제를 해결하는 데스크톱 앱"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+default-run = "nfd2nfc-desktop"
+
+[lib]
+name = "nfd2nfc_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+nfd2nfc-core = { path = "../crates/nfd2nfc-core" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+dirs = "6"
+notify = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
