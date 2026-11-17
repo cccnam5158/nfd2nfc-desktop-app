@@ -64,7 +64,11 @@ pub fn watcher_status(app: &AppHandle) -> WatcherStatus {
 /// 감시 상태를 바꾸고(필요하면 재시작), 설정·트레이·UI에 반영한다.
 ///
 /// `remember`가 true면 다음 실행 때도 이 상태로 시작하도록 설정에 저장한다.
-pub fn set_watching(app: &AppHandle, enabled: bool, remember: bool) -> Result<WatcherStatus, String> {
+pub fn set_watching(
+    app: &AppHandle,
+    enabled: bool,
+    remember: bool,
+) -> Result<WatcherStatus, String> {
     let state = app.state::<AppState>();
     {
         let mut guard = state.watcher.lock().map_err(|e| e.to_string())?;
@@ -72,7 +76,12 @@ pub fn set_watching(app: &AppHandle, enabled: bool, remember: bool) -> Result<Wa
             old.stop();
         }
         if enabled {
-            let paths = state.config.lock().map_err(|e| e.to_string())?.paths.clone();
+            let paths = state
+                .config
+                .lock()
+                .map_err(|e| e.to_string())?
+                .paths
+                .clone();
             let (_, active) = evaluate(&paths);
             let handle = watcher::start(app.clone(), active)?;
             if handle.watched == 0 {

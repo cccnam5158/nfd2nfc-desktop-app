@@ -57,9 +57,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 pub fn refresh(app: &AppHandle, status: &WatcherStatus) {
     let state = app.state::<AppState>();
     let Ok(guard) = state.tray.lock() else { return };
-    let Some(handles) = guard.as_ref() else { return };
+    let Some(handles) = guard.as_ref() else {
+        return;
+    };
     let (label, toggle) = if status.running {
-        (format!("● 감시 중 (폴더 {}개)", status.watched), "감시 중지")
+        (
+            format!("● 감시 중 (폴더 {}개)", status.watched),
+            "감시 중지",
+        )
     } else {
         ("○ 감시 중지됨".to_string(), "감시 시작")
     };

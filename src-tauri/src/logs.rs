@@ -69,7 +69,11 @@ impl LogStore {
         let _ = fs::create_dir_all(&dir);
         rotate_if_large(&path);
         let entries = load_tail(&path);
-        let file = OpenOptions::new().create(true).append(true).open(&path).ok();
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .ok();
         Self {
             app,
             entries: Mutex::new(entries),
@@ -135,7 +139,10 @@ impl LogStore {
 }
 
 fn rotate_if_large(path: &Path) {
-    if fs::metadata(path).map(|m| m.len() > ROTATE_BYTES).unwrap_or(false) {
+    if fs::metadata(path)
+        .map(|m| m.len() > ROTATE_BYTES)
+        .unwrap_or(false)
+    {
         let _ = fs::rename(path, path.with_extension("log.old"));
     }
 }

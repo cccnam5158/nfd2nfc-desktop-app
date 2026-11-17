@@ -298,10 +298,10 @@ mod tests {
         fs::write(root.join("file.txt"), b"").unwrap();
 
         let entries = vec![
-            entry(&a, Action::Watch, Mode::Recursive),        // 0 active
-            entry(&b, Action::Ignore, Mode::Recursive),       // 1 active, overrides 0
-            entry(&b, Action::Watch, Mode::Recursive),        // 2 overridden by 1
-            entry(&a, Action::Watch, Mode::Children),         // 3 redundant (0)
+            entry(&a, Action::Watch, Mode::Recursive),  // 0 active
+            entry(&b, Action::Ignore, Mode::Recursive), // 1 active, overrides 0
+            entry(&b, Action::Watch, Mode::Recursive),  // 2 overridden by 1
+            entry(&a, Action::Watch, Mode::Children),   // 3 redundant (0)
             entry(&root.join("nope"), Action::Watch, Mode::Recursive), // 4 not found
             entry(&root.join("file.txt"), Action::Watch, Mode::Recursive), // 5 not dir
         ];
@@ -338,7 +338,11 @@ mod tests {
         assert_eq!(Config::load(&path).unwrap(), cfg);
 
         // 원본 nfd2nfc 형식(최상위 키 없음)도 읽힌다.
-        fs::write(&path, "[[paths]]\npath = \"~/Documents\"\naction = \"ignore\"\n").unwrap();
+        fs::write(
+            &path,
+            "[[paths]]\npath = \"~/Documents\"\naction = \"ignore\"\n",
+        )
+        .unwrap();
         let legacy = Config::load(&path).unwrap();
         assert!(legacy.watcher_enabled);
         assert_eq!(legacy.paths[0].action, Action::Ignore);

@@ -13,10 +13,10 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use nfd2nfc_core::{
     abbreviate_home, effective_action, nfc_path, normalize_path, Action, ActiveEntry, Mode, Target,
 };
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::state::AppState;
@@ -87,7 +87,11 @@ pub fn start(app: AppHandle, active: Vec<ActiveEntry>) -> Result<WatcherHandle, 
     })
 }
 
-fn worker_loop(app: AppHandle, rx: mpsc::Receiver<notify::Result<Event>>, active: Vec<ActiveEntry>) {
+fn worker_loop(
+    app: AppHandle,
+    rx: mpsc::Receiver<notify::Result<Event>>,
+    active: Vec<ActiveEntry>,
+) {
     let mut pending: HashSet<PathBuf> = HashSet::new();
     let mut failures: HashMap<PathBuf, Instant> = HashMap::new();
     let mut last_flush = Instant::now();
@@ -127,7 +131,11 @@ fn is_candidate(path: &std::path::Path, active: &[ActiveEntry]) -> bool {
     effective_action(&nfc_path(path), active) == Some(Action::Watch)
 }
 
-fn flush(app: &AppHandle, pending: &mut HashSet<PathBuf>, failures: &mut HashMap<PathBuf, Instant>) {
+fn flush(
+    app: &AppHandle,
+    pending: &mut HashSet<PathBuf>,
+    failures: &mut HashMap<PathBuf, Instant>,
+) {
     let state = app.state::<AppState>();
     let mut paths: Vec<PathBuf> = pending.drain().collect();
     paths.sort_by_key(|p| p.components().count());

@@ -38,11 +38,14 @@ pub fn run() {
             tray::create(&handle)?;
 
             let state = handle.state::<AppState>();
-            state.logs.info(format!(
-                "NFD2NFC {} 시작",
-                handle.package_info().version
-            ));
-            let enabled = state.config.lock().map(|c| c.watcher_enabled).unwrap_or(false);
+            state
+                .logs
+                .info(format!("NFD2NFC {} 시작", handle.package_info().version));
+            let enabled = state
+                .config
+                .lock()
+                .map(|c| c.watcher_enabled)
+                .unwrap_or(false);
             if let Err(e) = state::set_watching(&handle, enabled, false) {
                 state.logs.error(e);
             }

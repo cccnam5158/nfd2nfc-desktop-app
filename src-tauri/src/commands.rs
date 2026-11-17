@@ -90,7 +90,12 @@ fn entry_views(entries: Vec<PathEntry>) -> Vec<EntryView> {
 
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> CmdResult<Vec<EntryView>> {
-    let paths = state.config.lock().map_err(|e| e.to_string())?.paths.clone();
+    let paths = state
+        .config
+        .lock()
+        .map_err(|e| e.to_string())?
+        .paths
+        .clone();
     blocking(move || entry_views(paths)).await
 }
 
@@ -117,9 +122,16 @@ pub async fn save_config(app: AppHandle, entries: Vec<PathEntry>) -> CmdResult<V
         next.save(&state.config_path).map_err(|e| e.to_string())?;
         *cfg = next;
     }
-    state.logs.info(format!("설정 저장 — 규칙 {}개", entries.len()));
+    state
+        .logs
+        .info(format!("설정 저장 — 규칙 {}개", entries.len()));
     state::restart_if_running(&app)?;
-    let paths = state.config.lock().map_err(|e| e.to_string())?.paths.clone();
+    let paths = state
+        .config
+        .lock()
+        .map_err(|e| e.to_string())?
+        .paths
+        .clone();
     blocking(move || entry_views(paths)).await
 }
 
@@ -272,9 +284,11 @@ pub async fn convert_paths(
                 .convert(format!("[수동 {arrow}] {}", abbreviate_home(&r.to)));
         }
         for e in &report.errors {
-            state
-                .logs
-                .error(format!("변환 실패: {} — {}", abbreviate_home(&e.path), e.message));
+            state.logs.error(format!(
+                "변환 실패: {} — {}",
+                abbreviate_home(&e.path),
+                e.message
+            ));
         }
         state
             .session_converted

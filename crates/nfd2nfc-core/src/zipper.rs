@@ -250,7 +250,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let folder = tmp.path().join("사진모음".nfd().collect::<String>());
         fs::create_dir_all(folder.join("하위".nfd().collect::<String>())).unwrap();
-        fs::write(folder.join("하위".nfd().collect::<String>()).join("가족.jpg".nfd().collect::<String>()), b"jpeg").unwrap();
+        fs::write(
+            folder
+                .join("하위".nfd().collect::<String>())
+                .join("가족.jpg".nfd().collect::<String>()),
+            b"jpeg",
+        )
+        .unwrap();
         fs::write(folder.join(".DS_Store"), b"junk").unwrap();
         fs::write(folder.join("._가족.jpg"), b"junk").unwrap();
         fs::write(folder.join(".hidden"), b"h").unwrap();
@@ -278,7 +284,10 @@ mod tests {
 
         // 같은 이름이 이미 있으면 번호가 붙는다
         let next = default_zip_path(&inputs).unwrap();
-        assert_eq!(next.file_name().unwrap().to_string_lossy(), "사진모음 2.zip");
+        assert_eq!(
+            next.file_name().unwrap().to_string_lossy(),
+            "사진모음 2.zip"
+        );
     }
 
     #[test]

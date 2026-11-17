@@ -417,7 +417,11 @@ mod tests {
         let dry = normalize(&top, Scope::Recursive, Target::Nfc, true);
         assert_eq!(dry.renamed.len(), 3, "{dry:?}");
         assert!(dry.errors.is_empty());
-        assert_eq!(disk_name(tmp.path()), vec![nfd("폴더")], "dry run must not touch disk");
+        assert_eq!(
+            disk_name(tmp.path()),
+            vec![nfd("폴더")],
+            "dry run must not touch disk"
+        );
 
         let children = normalize(&top, Scope::Children, Target::Nfc, false);
         assert_eq!(children.renamed.len(), 1); // 하위 폴더 이름만
