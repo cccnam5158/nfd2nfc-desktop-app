@@ -31,6 +31,20 @@
           <h1 id="page-title" data-tauri-drag-region></h1>
           <div class="topbar-actions" id="page-actions"></div>
         </header>
+        <div class="perm-banner" id="perm-banner" hidden>
+          <span class="perm-ico">⚠</span>
+          <div class="perm-text">
+            <b>전체 디스크 접근 권한이 없어 자동 변환이 동작하지 않을 수 있습니다.</b>
+            <span>macOS는 권한이 없는 앱에 데스크탑·문서·다운로드·클라우드 폴더의 변경 알림을 보내지 않습니다.
+              <b>시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한</b>에서 NFD2NFC를 켠 뒤 다시 시작하세요.
+              (목록에 없으면 ＋ 버튼으로 <code>/Applications/NFD2NFC.app</code>을 추가)</span>
+          </div>
+          <div class="perm-actions">
+            <button class="btn" id="perm-open">시스템 설정 열기</button>
+            <button class="btn primary" id="perm-relaunch">다시 시작</button>
+            <button class="icon-btn" id="perm-dismiss" title="이번 실행 동안 숨기기">✕</button>
+          </div>
+        </div>
         <section class="page" id="page-home" hidden></section>
         <section class="page" id="page-config" hidden></section>
         <section class="page" id="page-convert" hidden></section>

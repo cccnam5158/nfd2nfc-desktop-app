@@ -37,6 +37,8 @@ export type StatusKind =
 
 export interface EntryView extends PathEntry {
   display: string;
+  /** `~`를 펼친 절대 경로 */
+  absolute: string;
   status: { kind: StatusKind; reference: number | null };
 }
 
@@ -148,4 +150,5 @@ export const api = {
   revealInFinder: (path: string) => invoke<void>("reveal_in_finder", { path }),
   openLogFolder: () => invoke<void>("open_log_folder"),
   openFdaSettings: () => invoke<void>("open_fda_settings"),
+  relaunchApp: () => invoke<void>("relaunch_app"),
 };

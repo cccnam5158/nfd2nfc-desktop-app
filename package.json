@@ -12,6 +12,7 @@
     "app:build:universal": "tauri build --target universal-apple-darwin",
     "app:build:intel": "tauri build --target x86_64-apple-darwin",
     "app:build:arm": "tauri build --target aarch64-apple-darwin",
+    "app:install": "./scripts/install-local.sh",
     "icons": "tauri icon app-icon.svg"
   },
   "dependencies": {

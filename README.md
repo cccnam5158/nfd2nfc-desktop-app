@@ -76,23 +76,40 @@ cargo test -p nfd2nfc-core      # 핵심 로직 테스트
 cargo clippy --workspace -- -D warnings
 ```
 
-### 배포 빌드
+### 배포 빌드와 설치
 
 ```bash
-npm run app:build:universal     # Intel + Apple Silicon 공용 .app / .dmg
-npm run app:build:intel         # x86_64 전용
-npm run app:build:arm           # arm64 전용
+CI=true npm run app:build:intel       # Intel(x86_64) 전용
+CI=true npm run app:build:arm         # Apple Silicon(arm64) 전용
+CI=true npm run app:build:universal   # 둘 다 들어 있는 공용 빌드
+npm run app:install                   # 이 Mac의 CPU에 맞는 .app을 /Applications에 설치하고 실행
 ```
 
-결과물은 `target/universal-apple-darwin/release/bundle/{macos,dmg}/`에 생성됩니다.
+`CI=true`를 주면 DMG를 만들 때 Finder AppleScript로 창을 꾸미는 단계를 건너뜁니다. 이 단계는 비대화형 환경에서 멈출 수 있습니다.
 
-> 서명하지 않은 빌드를 다른 Mac에서 처음 열 때는 Finder에서 앱을 **우클릭 → 열기**로 실행해야 합니다.
-> 정식으로 배포하려면 Apple Developer ID로 서명하고 공증(notarization)을 받아야 합니다.
+| 빌드 | 결과물 |
+|---|---|
+| Intel | `target/x86_64-apple-darwin/release/bundle/{macos/NFD2NFC.app, dmg/NFD2NFC_<버전>_x64.dmg}` |
+| Apple Silicon | `target/aarch64-apple-darwin/release/bundle/{macos/NFD2NFC.app, dmg/NFD2NFC_<버전>_aarch64.dmg}` |
+| 공용 | `target/universal-apple-darwin/release/bundle/…` |
+
+번들은 **ad-hoc 서명**(`signingIdentity: "-"`)됩니다. Apple Silicon은 서명 없는 앱을 아예 실행하지 않기 때문에 필요합니다.
+이 서명은 Apple이 인증한 것이 아니라서, 다른 Mac으로 DMG를 옮겨 처음 열면 Gatekeeper가 막습니다. 다음 둘 중 하나로 실행하세요.
+
+- Finder에서 앱을 **우클릭 → 열기**를 누릅니다. macOS 15 이상에서는 **시스템 설정 → 개인정보 보호 및 보안 → "그래도 열기"**를 누릅니다.
+- 또는 `xattr -dr com.apple.quarantine /Applications/NFD2NFC.app`을 실행합니다.
+
+정식으로 배포하려면 Apple Developer ID로 서명하고 공증(notarization)을 받아야 합니다.
 
 ## 참고 사항
 
 - **감시는 새로 생기거나 이름이 바뀐 항목에만 적용됩니다.** 이미 있는 파일은 ‘감시 폴더’ 탭의 **기존 파일 정리** 버튼이나 ‘변환 · 압축’ 탭으로 한 번에 정리하세요.
-- **전체 디스크 접근 권한**은 필수가 아닌 권장 사항입니다. 허용하지 않으면 데스크탑·문서·다운로드 폴더마다 접근 허용 창이 뜹니다. 이 앱은 감시자가 `.app` 안에서 직접 실행되므로, 원본 CLI와 달리 권한을 **앱 단위로 한 번만** 주면 됩니다.
+- **데스크탑·문서·다운로드·iCloud·Google Drive 같은 폴더를 감시하려면 전체 디스크 접근 권한이 필요합니다.** 권한이 없으면 macOS가 이 폴더들의 변경 알림(FSEvents)을 앱에 보내지 않습니다. 이때 오류도 나지 않아서 자동 변환이 조용히 멈춘 것처럼 보입니다. 앱은 이 상황을 감지해 화면 위쪽 배너와 메뉴바 아이콘의 🟡 주황색 점으로 알려 줍니다.
+  1. 시스템 설정 → 개인정보 보호 및 보안 → **전체 디스크 접근 권한**에서 NFD2NFC를 켭니다. 목록에 없으면 ＋ 버튼으로 `/Applications/NFD2NFC.app`을 추가합니다.
+  2. 앱의 **다시 시작** 버튼을 누릅니다.
+  - 개발 모드(`npm run app:dev`)에서는 터미널(VS Code 등)의 권한을 이어받기 때문에 이 문제가 드러나지 않습니다.
+  - ad-hoc 서명 앱의 권한은 바이너리 해시에 묶여 있습니다. **다시 빌드해서 설치하면 권한을 다시 줘야 합니다.** 목록에서 기존 항목을 −로 지우고 다시 추가하세요.
+  - 감시자는 `.app` 안에서 직접 실행되므로, 원본 CLI와 달리 권한을 **앱 단위로 한 번만** 주면 됩니다.
 - 이름 충돌 방지: 정규화를 구분하는 볼륨에서 NFC 이름의 다른 파일이 이미 있으면 덮어쓰지 않고 건너뜁니다.
 - HFS+처럼 이름을 항상 NFD로 저장하는 볼륨에서는 변환해도 효과가 없습니다. 이때는 오류로 기록하고 같은 경로를 반복해서 처리하지 않습니다.
 

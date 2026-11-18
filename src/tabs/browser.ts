@@ -22,6 +22,7 @@ import {
 } from "../ui";
 
 const REFRESH_MS = 3000;
+const LAST_PATH_KEY = "browser.lastPath";
 const SCAN_TTL_MS = 30_000;
 const SAMPLE_PAGE = 100;
 
@@ -63,6 +64,12 @@ export class BrowserTab implements Tab {
   private scanning = new Set<string>();
   private samplesShown = SAMPLE_PAGE;
   private detailKey = "";
+  private navLockUntil = 0;
+  private menu: HTMLElement | null = null;
+
+  private navLocked() {
+    return Date.now() < this.navLockUntil;
+  }
 
   constructor(private app: App) {}
 
@@ -89,6 +96,7 @@ export class BrowserTab implements Tab {
             <button data-v="nfc">NFC <span data-count="nfc"></span></button>
             <button data-v="ascii">ASCII <span data-count="ascii"></span></button>
           </div>
+          <span class="br-hint">더블클릭: 열기 · 우클릭: 메뉴 · ⌘[ ⌘]: 뒤로/앞으로</span>
         </div>
 
         <div class="br-body">
@@ -140,19 +148,74 @@ export class BrowserTab implements Tab {
       this.renderList();
     });
 
+    // Finder 방식: 클릭 = 선택, 더블클릭 = 한 단계 들어가기, 행 끝의 › = 바로 들어가기
     const list = $("#br-list", root);
+    const rowItem = (e: Event) => {
+      const li = (e.target as HTMLElement).closest<HTMLElement>("li[data-path]");
+      return li ? this.itemByPath(li.dataset.path!) : undefined;
+    };
     list.addEventListener("click", (e) => {
-      const t = e.target as HTMLElement;
-      const li = t.closest<HTMLElement>("li[data-path]");
-      if (!li) return;
-      const item = this.itemByPath(li.dataset.path!);
+      if (this.navLocked()) return;
+      const item = rowItem(e);
       if (!item) return;
-      // ⓘ: 폴더에 들어가지 않고 정보만 보기
-      if (t.closest("[data-op=info]")) return this.select(item.path);
-      if (item.isDir) void this.navigate(item.path);
-      else this.select(item.path);
+      if (item.isDir && (e.target as HTMLElement).closest("[data-op=enter]")) {
+        void this.navigate(item.path);
+        return;
+      }
+      this.select(item.path);
+    });
+    list.addEventListener("dblclick", (e) => {
+      if (this.navLocked()) return;
+      const item = rowItem(e);
+      if (item?.isDir) void this.navigate(item.path);
     });
     list.addEventListener("keydown", (e) => this.onListKey(e));
+
+    // 우클릭 메뉴
+    list.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const item = rowItem(e);
+      if (item) this.select(item.path);
+      this.showContextMenu(e.clientX, e.clientY, item);
+    });
+
+    // 마우스 사이드 버튼(뒤로 3 / 앞으로 4) — 탐색기 영역 어디서든
+    const onSideButton = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      if (e.type !== "mouseup") return;
+      if (e.button === 3) this.goBack();
+      else this.goForward();
+    };
+    root.addEventListener("mousedown", onSideButton);
+    root.addEventListener("mouseup", onSideButton);
+
+    // 트랙패드 두 손가락 가로 스와이프 → 뒤로/앞으로 (Safari와 같은 방향)
+    let swipeSum = 0;
+    let swipeDone = false;
+    let swipeTimer: number | undefined;
+    list.addEventListener(
+      "wheel",
+      (e) => {
+        if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+        window.clearTimeout(swipeTimer);
+        swipeTimer = window.setTimeout(() => {
+          swipeSum = 0;
+          swipeDone = false;
+        }, 250);
+        if (swipeDone) return;
+        swipeSum += e.deltaX;
+        if (Math.abs(swipeSum) > 140) {
+          swipeDone = true;
+          if (swipeSum < 0) this.goBack();
+          else this.goForward();
+        }
+      },
+      { passive: true },
+    );
+
+    document.addEventListener("click", () => this.hideContextMenu());
+    window.addEventListener("blur", () => this.hideContextMenu());
 
     $("#br-detail", root).addEventListener("click", (e) => this.onDetailClick(e));
 
@@ -178,14 +241,93 @@ export class BrowserTab implements Tab {
   show(actions: HTMLElement) {
     this.actions = actions;
     this.renderActions();
-    void this.refresh();
+    if (this.listing) {
+      void this.refresh();
+    } else {
+      // 처음 열 때는 마지막으로 보던 폴더에서 시작 (없어졌으면 홈)
+      let last: string | null = null;
+      try {
+        last = localStorage.getItem(LAST_PATH_KEY);
+      } catch {
+        /* 무시 */
+      }
+      void this.navigate(last, { history: false, quiet: true }).then(() => {
+        if (!this.listing) void this.navigate(null, { history: false });
+      });
+    }
     this.timer = window.setInterval(() => void this.refresh(true), REFRESH_MS);
     $("#br-list", this.root).focus();
   }
 
   hide() {
     window.clearInterval(this.timer);
+    this.hideContextMenu();
     this.actions = null;
+  }
+
+  // ───────── 우클릭 메뉴 ─────────
+
+  private showContextMenu(x: number, y: number, item?: DirItem) {
+    this.hideContextMenu();
+    type Entry = { label: string; run: () => void; disabled?: boolean; danger?: boolean } | "sep";
+    const entries: Entry[] = [];
+    if (item) {
+      const s: Subject = { ...item, isCurrent: false };
+      if (item.isDir) entries.push({ label: "열기", run: () => void this.navigate(item.path) });
+      entries.push({
+        label: item.isDir ? "NFC로 변환 (하위 포함)" : "NFC로 변환",
+        run: () => void this.doConvert(s, item.isDir ? "recursive" : "name"),
+        disabled: !item.isDir && !needsFix(item.form),
+      });
+      entries.push({ label: "변환 목록으로 보내기", run: () => this.app.sendToConvert([item.path]) });
+      entries.push({ label: "Finder에서 보기", run: () => void api.revealInFinder(item.path) });
+      if (item.form !== "ascii") entries.push({ label: "NFC 이름 복사", run: () => this.copyName(item.name) });
+      entries.push("sep");
+    }
+    entries.push(
+      { label: "뒤로", run: () => this.goBack(), disabled: !this.back.length },
+      { label: "앞으로", run: () => this.goForward(), disabled: !this.forward.length },
+      { label: "상위 폴더로", run: () => this.goUp(), disabled: !this.listing?.parent },
+      "sep",
+      { label: "새로 고침", run: () => void this.refresh() },
+      { label: `${this.showHidden ? "✓ " : ""}숨김 파일 표시`, run: () => this.toggleHidden() },
+    );
+
+    const menu = document.createElement("div");
+    menu.className = "ctx-menu";
+    menu.innerHTML = entries
+      .map((en, i) =>
+        en === "sep"
+          ? `<div class="ctx-sep"></div>`
+          : `<button data-i="${i}" ${en.disabled ? "disabled" : ""}>${esc(en.label)}</button>`,
+      )
+      .join("");
+    menu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-i]");
+      if (!b || b.disabled) return;
+      const en = entries[Number(b.dataset.i)];
+      this.hideContextMenu();
+      if (en !== "sep") en.run();
+    });
+    document.body.appendChild(menu);
+    // 화면 밖으로 나가지 않게
+    const { width, height } = menu.getBoundingClientRect();
+    menu.style.left = `${Math.min(x, window.innerWidth - width - 6)}px`;
+    menu.style.top = `${Math.min(y, window.innerHeight - height - 6)}px`;
+    this.menu = menu;
+  }
+
+  private hideContextMenu() {
+    this.menu?.remove();
+    this.menu = null;
+  }
+
+  private copyName(name: string) {
+    void navigator.clipboard
+      .writeText(name.normalize("NFC"))
+      .then(() => toast("NFC 이름을 복사했습니다", "success"))
+      .catch((err) => toast(errMsg(err), "error"));
   }
 
   /** 폴더는 열고, 파일은 그 폴더로 가서 선택한다. */
@@ -204,9 +346,13 @@ export class BrowserTab implements Tab {
 
   // ───────── 탐색 ─────────
 
-  private async navigate(path: string | null, opts: { history?: boolean; select?: string } = {}) {
+  private async navigate(
+    path: string | null,
+    opts: { history?: boolean; select?: string; quiet?: boolean } = {},
+  ) {
+    this.hideContextMenu();
     const listing = await api.listDir(path, this.showHidden).catch((e) => {
-      toast(errMsg(e), "error");
+      if (!opts.quiet) toast(errMsg(e), "error");
       return null;
     });
     if (!listing) return;
@@ -214,7 +360,14 @@ export class BrowserTab implements Tab {
       this.back.push(this.listing.path);
       this.forward = [];
     }
+    // 이동 직후 남은 클릭(더블클릭의 두 번째 클릭 등)이 새 목록에 먹히지 않도록 잠깐 잠근다
+    this.navLockUntil = Date.now() + 400;
     this.listing = listing;
+    try {
+      localStorage.setItem(LAST_PATH_KEY, listing.path);
+    } catch {
+      /* 저장소를 쓸 수 없어도 동작에는 지장 없음 */
+    }
     this.selected = opts.select ?? null;
     this.samplesShown = SAMPLE_PAGE;
     this.renderAll();
@@ -389,7 +542,11 @@ export class BrowserTab implements Tab {
   }
 
   private async convert(s: Subject, scope: Scope, btn: HTMLButtonElement) {
-    await busy(btn, async () => {
+    await busy(btn, () => this.doConvert(s, scope));
+  }
+
+  private async doConvert(s: Subject, scope: Scope) {
+    try {
       const rep = await api.convertPaths([s.path], scope, "nfc", false);
       this.scans.clear();
       if (rep.errors.length) toast(`${rep.errors.length}개 항목 변환 실패: ${rep.errors[0].message}`, "error");
@@ -399,7 +556,9 @@ export class BrowserTab implements Tab {
       if (moved) await this.navigate(moved.to, { history: false });
       else await this.refresh();
       await this.app.refreshStatus();
-    });
+    } catch (e) {
+      toast(errMsg(e), "error");
+    }
   }
 
   private onDetailClick(e: Event) {
@@ -420,11 +579,7 @@ export class BrowserTab implements Tab {
       case "reveal":
         return void api.revealInFinder(s.path);
       case "copy":
-        void navigator.clipboard
-          .writeText(s.name.normalize("NFC"))
-          .then(() => toast("NFC 이름을 복사했습니다", "success"))
-          .catch((err) => toast(errMsg(err), "error"));
-        return;
+        return this.copyName(s.name);
       case "open":
         return void this.navigate(s.path);
       case "rescan":
@@ -511,7 +666,7 @@ export class BrowserTab implements Tab {
           <span class="muted">${formatDate(it.modified)}</span>
           <span class="r">${
             it.isDir
-              ? `<button class="icon-btn info" data-op="info" title="들어가지 않고 정보 보기">ⓘ</button><span class="chev">›</span>`
+              ? `<button class="icon-btn chev" data-op="enter" title="폴더 열기 (더블클릭 / Enter)">›</button>`
               : ""
           }</span>
         </li>`;

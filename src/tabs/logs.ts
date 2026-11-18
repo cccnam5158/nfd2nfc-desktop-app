@@ -33,6 +33,10 @@ export class LogsTab implements Tab {
     const list = $("#lg-list", root);
     list.addEventListener("scroll", () => ($("#lg-jump", root).hidden = this.atBottom()));
     $("#lg-jump", root).addEventListener("click", () => this.scrollToBottom());
+    list.addEventListener("dblclick", (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>(".log-row[data-path]");
+      if (row) void api.revealInFinder(row.dataset.path!).catch((err) => toast(String(err), "error"));
+    });
 
     this.app.onLog((e) => {
       this.entries.push(e);
@@ -96,8 +100,10 @@ export class LogsTab implements Tab {
   }
 
   private row(e: LogEntry) {
+    // 메시지 안의 `~/…` 경로 (뒤에 " — 오류 설명"이 붙을 수 있음)
+    const path = /(~\/.+?)(?:\s—\s|$)/.exec(e.message)?.[1];
     // 날짜는 MM-DD만 (원본 TUI와 동일한 표시)
-    return `<div class="log-row lv-${e.level}">
+    return `<div class="log-row lv-${e.level} ${path ? "has-path" : ""}" ${path ? `data-path="${esc(path)}" title="더블클릭: Finder에서 보기"` : ""}>
       <span class="ts">${esc(e.ts.slice(5))}</span>
       <span class="lv">${LEVEL_LABEL[e.level]}</span>
       <span class="msg">${esc(e.message.normalize("NFC"))}</span>

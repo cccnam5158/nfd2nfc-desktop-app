@@ -62,6 +62,7 @@ export class App {
   setStatus(s: AppStatus) {
     this.status = s;
     renderSidebarStatus(s.watcher);
+    renderPermBanner(s);
     this.statusListeners.forEach((fn) => fn(s));
   }
 
@@ -96,6 +97,17 @@ function renderSidebarStatus(w: WatcherStatus) {
   const el = $("#sidebar-status");
   el.classList.toggle("running", w.running);
   $(".label", el).textContent = w.running ? `감시 중 · 폴더 ${w.watched}개` : "감시 중지됨";
+}
+
+let permDismissed = false;
+
+/** 감시 중인데 전체 디스크 접근 권한이 없으면 모든 화면 상단에 경고 */
+function renderPermBanner(s: AppStatus) {
+  const show = !permDismissed && s.watcher.running && s.watcher.watched > 0 && s.fullDiskAccess === false;
+  $("#perm-banner").hidden = !show;
+  $("#sidebar-status").classList.toggle("warn", s.watcher.running && s.fullDiskAccess === false);
+  if (s.watcher.running && s.fullDiskAccess === false)
+    $(".label", $("#sidebar-status")).textContent = `감시 중 · 권한 필요`;
 }
 
 async function main() {
@@ -139,6 +151,13 @@ async function main() {
       if (app.tabs[app.current].onDrop) app.tabs[app.current].onDrop!(p.paths);
       else app.sendToConvert(p.paths);
     }
+  });
+
+  $("#perm-open").addEventListener("click", () => void api.openFdaSettings());
+  $("#perm-relaunch").addEventListener("click", () => void api.relaunchApp());
+  $("#perm-dismiss").addEventListener("click", () => {
+    permDismissed = true;
+    $("#perm-banner").hidden = true;
   });
 
   app.switchTo("home");

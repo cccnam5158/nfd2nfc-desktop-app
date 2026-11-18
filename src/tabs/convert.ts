@@ -1,5 +1,5 @@
 // 변환 · 압축 탭 — 끌어다 놓은 파일/폴더를 그 자리에서 NFC로 바꾸거나, Windows용 NFC zip을 만든다.
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 
 import { api, type AnalyzedItem, type Report, type Scope, type Target, type ZipReport } from "../api";
 import type { App, Tab } from "../main";
@@ -16,6 +16,7 @@ import {
 } from "../ui";
 
 const MAX_RESULT_ROWS = 300;
+const CONFIRM_THRESHOLD = 200;
 
 export class ConvertTab implements Tab {
   readonly title = "변환 · 압축";
@@ -153,6 +154,22 @@ export class ConvertTab implements Tab {
     const run = $("#cv-run", root) as HTMLButtonElement;
     run.addEventListener("click", () =>
       busy(run, async () => {
+        // 대량 변환은 한 번 확인 (실수로 큰 폴더 전체를 바꾸는 것 방지)
+        const total = this.items.reduce((s, i) => s + i.nfdCount, 0);
+        if (this.target === "nfc" && total >= CONFIRM_THRESHOLD) {
+          const ok = await ask(
+            `${this.items.length}개 항목에서 이름 ${total.toLocaleString()}개를 NFC로 바꿉니다. 계속할까요?\n(먼저 ‘미리보기’로 목록을 확인할 수 있습니다)`,
+            { title: "변환 확인", kind: "warning", okLabel: "변환", cancelLabel: "취소" },
+          );
+          if (!ok) return;
+        }
+        if (this.target === "nfd") {
+          const ok = await ask(
+            "NFC → NFD 역변환은 Windows에서 이름이 깨지게 만듭니다. macOS 전용 도구와의 호환 등 특별한 이유가 있을 때만 사용하세요. 계속할까요?",
+            { title: "역변환 확인", kind: "warning", okLabel: "역변환", cancelLabel: "취소" },
+          );
+          if (!ok) return;
+        }
         const rep = await api.convertPaths(this.paths(), this.scope, this.target, false);
         this.showReport(rep, false);
         if (rep.errors.length) toast(`${rep.errors.length}개 항목을 변환하지 못했습니다`, "error");

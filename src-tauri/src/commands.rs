@@ -43,8 +43,11 @@ pub struct AppStatus {
 #[tauri::command]
 pub async fn get_status(app: AppHandle) -> CmdResult<AppStatus> {
     let state = app.state::<AppState>();
+    let watcher = state::watcher_status(&app);
+    // 권한은 앱 밖(시스템 설정)에서 바뀌므로, 상태를 물을 때마다 메뉴바 표시도 맞춘다
+    crate::tray::refresh(&app, &watcher);
     Ok(AppStatus {
-        watcher: state::watcher_status(&app),
+        watcher,
         full_disk_access: crate::fda::check(),
         session_converted: state.session_converted.load(Ordering::Relaxed),
         version: app.package_info().version.to_string(),
@@ -72,6 +75,8 @@ pub struct EntryView {
     entry: PathEntry,
     /// `~` 축약 + NFC 표시 경로
     display: String,
+    /// `~`를 펼친 절대 경로 — 다른 커맨드에 넘길 때 사용
+    absolute: String,
     status: EntryStatus,
 }
 
@@ -80,12 +85,21 @@ fn entry_views(entries: Vec<PathEntry>) -> Vec<EntryView> {
     entries
         .into_iter()
         .zip(statuses)
-        .map(|(entry, status)| EntryView {
-            display: abbreviate_home(&expand_tilde(&entry.path)),
-            entry,
-            status,
+        .map(|(entry, status)| {
+            let abs = expand_tilde(&entry.path);
+            EntryView {
+                display: abbreviate_home(&abs),
+                absolute: abs.to_string_lossy().into_owned(),
+                entry,
+                status,
+            }
         })
         .collect()
+}
+
+/// 프런트엔드에서 받은 경로 문자열 → 실제 경로. 설정에 저장된 `~/…` 형식도 받아들인다.
+fn input_path(p: &str) -> PathBuf {
+    expand_tilde(p)
 }
 
 #[tauri::command]
@@ -278,7 +292,7 @@ pub async fn list_dir(path: Option<String>, show_hidden: bool) -> CmdResult<DirL
 pub async fn scan_tree(path: String) -> CmdResult<FormScan> {
     const MAX_ENTRIES: usize = 200_000;
     const MAX_SAMPLES: usize = 500;
-    blocking(move || scan_forms(Path::new(&path), MAX_ENTRIES, MAX_SAMPLES)).await
+    blocking(move || scan_forms(&input_path(&path), MAX_ENTRIES, MAX_SAMPLES)).await
 }
 
 // ───────────────────────── 변환 · 압축 ─────────────────────────
@@ -304,7 +318,7 @@ pub async fn analyze_paths(paths: Vec<String>) -> CmdResult<Vec<AnalyzedItem>> {
         paths
             .into_iter()
             .map(|p| {
-                let path = PathBuf::from(&p);
+                let path = input_path(&p);
                 let raw = path
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
@@ -318,8 +332,12 @@ pub async fn analyze_paths(paths: Vec<String>) -> CmdResult<Vec<AnalyzedItem>> {
                     form: detect_form(&raw),
                     nfd_count: report.renamed.len(),
                     scanned: report.scanned,
-                    error: meta.err().map(|e| e.to_string()),
-                    path: p,
+                    error: meta.err().map(|e| match e.kind() {
+                        std::io::ErrorKind::NotFound => "경로를 찾을 수 없습니다".to_string(),
+                        std::io::ErrorKind::PermissionDenied => "접근 권한이 없습니다".to_string(),
+                        _ => e.to_string(),
+                    }),
+                    path: path.to_string_lossy().into_owned(),
                 }
             })
             .collect()
@@ -338,7 +356,7 @@ pub async fn convert_paths(
     let report = blocking(move || {
         let mut total = Report::default();
         for p in paths {
-            total.merge(normalize(Path::new(&p), scope, target, dry_run));
+            total.merge(normalize(&input_path(&p), scope, target, dry_run));
         }
         total
     })
@@ -371,7 +389,7 @@ pub async fn convert_paths(
 
 #[tauri::command]
 pub fn suggest_zip_path(paths: Vec<String>) -> Option<String> {
-    let inputs: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    let inputs: Vec<PathBuf> = paths.iter().map(|p| input_path(p)).collect();
     default_zip_path(&inputs).map(|p| p.to_string_lossy().into_owned())
 }
 
@@ -382,8 +400,8 @@ pub async fn create_zip(
     output: String,
     include_hidden: bool,
 ) -> CmdResult<ZipReport> {
-    let inputs: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let mut output = PathBuf::from(output);
+    let inputs: Vec<PathBuf> = paths.iter().map(|p| input_path(p)).collect();
+    let mut output = input_path(&output);
     if output.extension().map(|e| e != "zip").unwrap_or(true) {
         output.set_extension("zip");
     }
@@ -422,7 +440,8 @@ fn open(args: &[&str]) -> CmdResult<()> {
 
 #[tauri::command]
 pub fn reveal_in_finder(path: String) -> CmdResult<()> {
-    open(&["-R", &path])
+    let path = input_path(&path);
+    open(&["-R", &path.to_string_lossy()])
 }
 
 #[tauri::command]
@@ -433,4 +452,29 @@ pub fn open_log_folder(state: State<'_, AppState>) -> CmdResult<()> {
 #[tauri::command]
 pub fn open_fda_settings() -> CmdResult<()> {
     open(&["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"])
+}
+
+/// 권한(전체 디스크 접근)을 바꾼 뒤 적용하려면 프로세스를 새로 띄워야 한다.
+///
+/// `AppHandle::restart()`는 새 프로세스를 먼저 띄운다. 그런데 single-instance 플러그인이 기존 프로세스를 보고
+/// 새 프로세스를 바로 종료시켜 버릴 수 있다. 그래서 .app 번들이면 잠시 뒤 `open`으로 다시 열고 지금 프로세스는 종료한다.
+#[tauri::command]
+pub fn relaunch_app(app: AppHandle) {
+    state::shutdown(&app);
+    let bundle = std::env::current_exe().ok().and_then(|exe| {
+        exe.ancestors()
+            .find(|p| p.extension().is_some_and(|e| e == "app"))
+            .map(Path::to_path_buf)
+    });
+    match bundle {
+        Some(bundle) => {
+            let _ = Command::new("/bin/sh")
+                .arg("-c")
+                .arg("sleep 1; /usr/bin/open \"$0\"")
+                .arg(&bundle)
+                .spawn();
+            app.exit(0);
+        }
+        None => app.restart(),
+    }
 }

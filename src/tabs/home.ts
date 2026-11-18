@@ -43,10 +43,16 @@ export class HomeTab implements Tab {
             </div>
           </div>
 
-          <div class="card">
+          <div class="card metric-card">
             <div class="card-title">이번 세션</div>
             <div class="metric"><span id="home-converted">0</span><small>개 이름 변환</small></div>
             <button class="btn link" id="home-go-logs">로그 보기 →</button>
+          </div>
+
+          <div class="card folders-card">
+            <div class="card-title">감시 폴더 <span class="muted" id="home-folder-count"></span></div>
+            <ul class="folder-mini" id="home-folders"></ul>
+            <button class="btn link" id="home-go-config">관리 →</button>
           </div>
         </div>
 
@@ -98,6 +104,7 @@ export class HomeTab implements Tab {
       }),
     );
     $("#home-go-logs", root).addEventListener("click", () => this.app.switchTo("logs"));
+    $("#home-go-config", root).addEventListener("click", () => this.app.switchTo("config"));
     $("#home-fda", root).addEventListener("click", () => void api.openFdaSettings());
 
     const auto = $("#home-autostart", root) as HTMLInputElement;
@@ -116,6 +123,33 @@ export class HomeTab implements Tab {
     });
 
     this.app.onStatus((s) => this.render(s));
+  }
+
+  show() {
+    void this.renderFolders();
+  }
+
+  /** 감시 폴더 요약 카드 — 실제로 적용 중인 규칙만 보여 준다 */
+  private async renderFolders() {
+    try {
+      const views = await api.getConfig();
+      const watching = views.filter((v) => v.action === "watch" && v.status.kind === "active");
+      const problems = views.filter((v) => !["active", "redundant"].includes(v.status.kind)).length;
+      $("#home-folder-count", this.root).textContent = `${watching.length}개`;
+      $("#home-folders", this.root).innerHTML = watching.length
+        ? watching
+            .slice(0, 5)
+            .map(
+              (v) =>
+                `<li title="${esc(v.display)}"><span class="fi">📁</span><span class="name">${esc(v.display.normalize("NFC"))}</span><span class="muted small">${v.mode === "recursive" ? "하위 전체" : "바로 아래"}</span></li>`,
+            )
+            .join("") +
+          (watching.length > 5 ? `<li class="muted small">… 외 ${watching.length - 5}개</li>` : "") +
+          (problems ? `<li class="small"><span class="status err">✗ 문제 있는 규칙 ${problems}개</span></li>` : "")
+        : `<li class="muted small">아직 감시 중인 폴더가 없습니다. 파일을 주고받는 폴더(다운로드 등)를 추가하세요.</li>`;
+    } catch {
+      /* 홈 카드는 보조 정보 — 실패해도 조용히 */
+    }
   }
 
   private render(s: AppStatus) {

@@ -1,5 +1,5 @@
 // 감시 폴더 탭 — 원본 TUI Config 탭(규칙 테이블 + 상태 + 설명 박스)을 GUI로 옮긴 것
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 
 import { api, type Action, type EntryView, type Mode, type PathEntry, type StatusKind } from "../api";
 import type { App, Tab } from "../main";
@@ -164,7 +164,10 @@ export class ConfigTab implements Tab {
   }
 
   private addPaths(paths: string[]) {
-    const existing = new Set(this.entries.map((e) => e.path.normalize("NFC")));
+    // 저장된 `~/…`와 대화상자의 절대 경로를 같은 폴더로 인식하도록 둘 다 넣는다
+    const existing = new Set(
+      [...this.entries.map((e) => e.path), ...this.views.map((v) => v.absolute)].map((p) => p.normalize("NFC")),
+    );
     const fresh = paths.filter((p) => !existing.has(p.normalize("NFC")));
     if (!fresh.length) {
       toast("이미 목록에 있는 폴더입니다", "info");
@@ -221,14 +224,51 @@ export class ConfigTab implements Tab {
   private async save() {
     if (!this.dirty) return;
     const btn = this.actions?.querySelector<HTMLButtonElement>("#cfg-save");
+    // 저장 전 감시 중이던 폴더 — 저장 후 새로 감시하게 된 폴더를 알아내기 위해
+    const before = new Set(
+      this.views
+        .filter((v) => (JSON.parse(this.saved) as PathEntry[]).some((s) => s.path === v.path))
+        .filter((v) => v.action === "watch" && v.status.kind === "active")
+        .map((v) => v.absolute.normalize("NFC")),
+    );
     const run = async () => {
       const views = await api.saveConfig(this.entries);
       this.applyViews(views, true);
       await this.app.refreshStatus();
       toast("저장했습니다. 감시 중이면 새 설정으로 다시 시작합니다", "success");
+
+      // 감시는 "새로 생기는" 이름에만 적용되므로, 새로 추가한 폴더의 기존 파일 정리를 제안한다
+      const added = views.filter(
+        (v) => v.action === "watch" && v.status.kind === "active" && !before.has(v.absolute.normalize("NFC")),
+      );
+      if (added.length) await this.offerCleanup(added);
     };
     if (btn) await busy(btn, run);
     else await run().catch((e) => toast(errMsg(e), "error"));
+  }
+
+  private async offerCleanup(added: EntryView[]) {
+    const paths = added.map((v) => v.absolute);
+    const items = await api.analyzePaths(paths);
+    const total = items.reduce((s, i) => s + i.nfdCount, 0);
+    if (!total) return;
+    const names = added.map((v) => `• ${v.display.normalize("NFC")}`).join("\n");
+    const yes = await ask(
+      `새로 추가한 폴더에 이미 NFD(자소 분리) 이름이 ${total.toLocaleString()}개 있습니다.\n\n${names}\n\n지금 모두 NFC로 변환할까요? 감시는 앞으로 새로 생기는 파일에만 적용됩니다.`,
+      { title: "기존 파일 정리", kind: "info", okLabel: "지금 변환", cancelLabel: "나중에" },
+    );
+    if (!yes) return;
+    const scopeOf = (v: EntryView) => (v.mode === "recursive" ? "recursive" : "children");
+    let renamed = 0;
+    let errors = 0;
+    for (const v of added) {
+      const rep = await api.convertPaths([v.absolute], scopeOf(v), "nfc", false);
+      renamed += rep.renamed.length;
+      errors += rep.errors.length;
+    }
+    if (errors) toast(`${renamed}개 변환, ${errors}개 실패 — 로그 탭에서 확인하세요`, "error");
+    else toast(`기존 파일 ${renamed.toLocaleString()}개를 NFC로 변환했습니다`, "success");
+    await this.app.refreshStatus();
   }
 
   // ───────── 이벤트 ─────────
@@ -247,7 +287,7 @@ export class ConfigTab implements Tab {
       case "del":
         return this.remove(i);
       case "scan":
-        return this.app.sendToConvert([this.views[i]?.path ?? this.entries[i].path]);
+        return this.app.sendToConvert([this.views[i]?.absolute ?? this.entries[i].path]);
     }
     if (t.tagName !== "SELECT" && this.selected !== i) {
       this.selected = i;
