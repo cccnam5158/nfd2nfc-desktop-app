@@ -73,6 +73,7 @@ pub fn run() {
             commands::save_config,
             commands::suggested_folders,
             commands::list_dir,
+            commands::scan_tree,
             commands::analyze_paths,
             commands::convert_paths,
             commands::suggest_zip_path,

@@ -41,17 +41,44 @@ export interface EntryView extends PathEntry {
 }
 
 export interface DirItem {
+  /** 표시용 (NFC) */
   name: string;
+  /** 디스크에 저장된 그대로의 이름 */
+  rawName: string;
   path: string;
   isDir: boolean;
+  isSymlink: boolean;
   form: UnicodeForm;
+  size: number | null;
+  /** Unix 초 */
+  modified: number | null;
 }
 
 export interface DirListing {
   path: string;
   display: string;
   parent: string | null;
+  crumbs: { name: string; path: string }[];
+  form: UnicodeForm;
+  rawName: string;
   items: DirItem[];
+}
+
+export interface FormSample {
+  path: string;
+  relative: string;
+  isDir: boolean;
+  form: UnicodeForm;
+}
+
+export interface FormScan {
+  scanned: number;
+  ascii: number;
+  nfc: number;
+  nfd: number;
+  mixed: number;
+  truncated: boolean;
+  samples: FormSample[];
 }
 
 export interface AnalyzedItem {
@@ -107,6 +134,7 @@ export const api = {
 
   listDir: (path: string | null, showHidden: boolean) =>
     invoke<DirListing>("list_dir", { path, showHidden }),
+  scanTree: (path: string) => invoke<FormScan>("scan_tree", { path }),
 
   analyzePaths: (paths: string[]) => invoke<AnalyzedItem[]>("analyze_paths", { paths }),
   convertPaths: (paths: string[], scope: Scope, target: Target, dryRun: boolean) =>

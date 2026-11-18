@@ -10,8 +10,8 @@ use std::sync::atomic::Ordering;
 
 use nfd2nfc_core::{
     abbreviate_home, create_nfc_zip, default_zip_path, detect_form, evaluate, expand_tilde,
-    is_junk_name, nfc_string, normalize, EntryStatus, PathEntry, Report, Scope, Target,
-    UnicodeForm, ZipOptions, ZipReport,
+    is_junk_name, nfc_string, normalize, scan_forms, EntryStatus, FormScan, PathEntry, Report,
+    Scope, Target, UnicodeForm, ZipOptions, ZipReport,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -154,10 +154,24 @@ pub fn suggested_folders() -> Vec<String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirItem {
+    /// 표시용 이름 (NFC)
     name: String,
+    /// 디스크에 저장된 그대로의 이름 — 코드 포인트 분석용
+    raw_name: String,
     path: String,
     is_dir: bool,
+    is_symlink: bool,
     form: UnicodeForm,
+    /// 파일 크기 (폴더는 None)
+    size: Option<u64>,
+    /// 수정 시각 (Unix 초)
+    modified: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct Crumb {
+    name: String,
+    path: String,
 }
 
 #[derive(Serialize)]
@@ -166,7 +180,44 @@ pub struct DirListing {
     path: String,
     display: String,
     parent: Option<String>,
+    /// 경로 조각 (홈 아래면 `~`부터, 아니면 `/`부터)
+    crumbs: Vec<Crumb>,
+    /// 현재 폴더 자신의 이름 형태와 원본 이름
+    form: UnicodeForm,
+    raw_name: String,
     items: Vec<DirItem>,
+}
+
+fn crumbs_for(dir: &Path) -> Vec<Crumb> {
+    let home = dirs::home_dir();
+    let mut crumbs = Vec::new();
+    let mut cur = Some(dir);
+    while let Some(p) = cur {
+        let is_home = home.as_deref() == Some(p);
+        let name = if is_home {
+            "~".to_string()
+        } else {
+            match p.file_name() {
+                Some(n) => nfc_string(&n.to_string_lossy()),
+                None => "/".to_string(),
+            }
+        };
+        crumbs.push(Crumb {
+            name,
+            path: p.to_string_lossy().into_owned(),
+        });
+        if is_home {
+            break;
+        }
+        cur = p.parent();
+    }
+    crumbs.reverse();
+    crumbs
+}
+
+fn unix_secs(t: std::io::Result<std::time::SystemTime>) -> Option<i64> {
+    let d = t.ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(d.as_secs() as i64)
 }
 
 #[tauri::command]
@@ -184,13 +235,19 @@ pub async fn list_dir(path: Option<String>, show_hidden: bool) -> CmdResult<DirL
                 if is_junk_name(&raw) || (!show_hidden && raw.starts_with('.')) {
                     return None;
                 }
+                let is_symlink = e.file_type().map(|t| t.is_symlink()).unwrap_or(false);
                 // 심볼릭 링크 폴더도 탐색할 수 있도록 여기서는 링크를 따라간다.
-                let is_dir = fs::metadata(e.path()).map(|m| m.is_dir()).unwrap_or(false);
+                let meta = fs::metadata(e.path()).ok();
+                let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
                 Some(DirItem {
                     form: detect_form(&raw),
                     name: nfc_string(&raw),
                     path: e.path().to_string_lossy().into_owned(),
+                    size: meta.as_ref().filter(|m| m.is_file()).map(|m| m.len()),
+                    modified: meta.as_ref().and_then(|m| unix_secs(m.modified())),
+                    raw_name: raw,
                     is_dir,
+                    is_symlink,
                 })
             })
             .collect();
@@ -199,14 +256,29 @@ pub async fn list_dir(path: Option<String>, show_hidden: bool) -> CmdResult<DirL
                 .cmp(&a.is_dir)
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
+        let own_name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         Ok(DirListing {
             display: abbreviate_home(&dir),
             parent: dir.parent().map(|p| p.to_string_lossy().into_owned()),
+            crumbs: crumbs_for(&dir),
+            form: detect_form(&own_name),
+            raw_name: own_name,
             path: dir.to_string_lossy().into_owned(),
             items,
         })
     })
     .await?
+}
+
+/// 탐색기 상세 패널: 폴더 아래 전체의 NFC/NFD 분포와 NFD 항목 표본
+#[tauri::command]
+pub async fn scan_tree(path: String) -> CmdResult<FormScan> {
+    const MAX_ENTRIES: usize = 200_000;
+    const MAX_SAMPLES: usize = 500;
+    blocking(move || scan_forms(Path::new(&path), MAX_ENTRIES, MAX_SAMPLES)).await
 }
 
 // ───────────────────────── 변환 · 압축 ─────────────────────────

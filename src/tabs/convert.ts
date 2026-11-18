@@ -3,7 +3,17 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 
 import { api, type AnalyzedItem, type Report, type Scope, type Target, type ZipReport } from "../api";
 import type { App, Tab } from "../main";
-import { $, basename, busy, errMsg, esc, formBadge, formatBytes, toast } from "../ui";
+import {
+  $,
+  basename,
+  busy,
+  errMsg,
+  esc,
+  formBadge,
+  formatBytes,
+  toast,
+  visualizeNfd,
+} from "../ui";
 
 const MAX_RESULT_ROWS = 300;
 
@@ -317,25 +327,6 @@ export class ConvertTab implements Tab {
         제외 ${rep.skipped.toLocaleString()}개</p>`;
     $("#cv-zip-reveal", el).addEventListener("click", () => void api.revealInFinder(rep.output));
   }
-}
-
-/**
- * NFD 문자열을 "Windows에서 보이는 모습"으로 시각화한다.
- * 조합용 자모(U+1100~)를 호환 자모(ㄱ, ㅏ…)로 바꿔 자소 분리가 눈에 보이게 한다.
- */
-function visualizeNfd(s: string): string {
-  const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
-  const JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
-  const JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
-  let out = "";
-  for (const ch of s) {
-    const c = ch.codePointAt(0)!;
-    if (c >= 0x1100 && c <= 0x1112) out += CHO[c - 0x1100];
-    else if (c >= 0x1161 && c <= 0x1175) out += JUNG[c - 0x1161];
-    else if (c >= 0x11a8 && c <= 0x11c2) out += JONG[c - 0x11a7];
-    else out += ch;
-  }
-  return out;
 }
 
 function parentDisplay(p: string): string {

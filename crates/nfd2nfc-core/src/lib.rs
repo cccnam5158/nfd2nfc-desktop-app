@@ -9,7 +9,10 @@
 pub mod config;
 pub mod fs_util;
 pub mod normalizer;
+pub mod scan;
 pub mod zipper;
+
+pub use scan::{scan_forms, FormSample, FormScan};
 
 pub use config::{
     effective_action, evaluate, Action, ActiveEntry, Config, ConfigError, EntryStatus, Mode,

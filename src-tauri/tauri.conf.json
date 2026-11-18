@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "NFD2NFC",
-        "width": 960,
-        "height": 660,
+        "width": 1100,
+        "height": 720,
         "minWidth": 780,
         "minHeight": 540,
         "visible": false,
